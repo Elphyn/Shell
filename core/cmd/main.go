@@ -46,26 +46,18 @@ func setupFileLogger() (*os.File, error) {
 }
 
 type ServiceManager struct {
-	conn *dbus.Conn
-
+	conn     *dbus.Conn
 	unitName string
 }
 
-func CreateServiceManager(conn *dbus.Conn, unitName string) (*ServiceManager, error) {
-	manager := &ServiceManager{
+func CreateServiceManager(conn *dbus.Conn, unitName string) *ServiceManager {
+	return &ServiceManager{
 		conn:     conn,
 		unitName: unitName,
 	}
-
-	err := manager.start()
-	if err != nil {
-		return nil, err
-	}
-
-	return manager, nil
 }
 
-func (m *ServiceManager) start() error {
+func (m *ServiceManager) Start() error {
 	resultCh := make(chan string)
 	_, err := m.conn.StartUnitContext(context.Background(), m.unitName, "replace", resultCh)
 	if err != nil {
@@ -76,7 +68,28 @@ func (m *ServiceManager) start() error {
 	case result := <-resultCh:
 		switch result {
 		case "done":
-			log.Printf("Service for %v has started", m.unitName)
+			log.Printf("Service %v successfully started", m.unitName)
+		default:
+			log.Printf("Unexpected result: %s", result)
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (m *ServiceManager) Stop() error {
+	resultCh := make(chan string)
+	_, err := m.conn.StopUnitContext(context.Background(), m.unitName, "replace", resultCh)
+	if err != err {
+		return err
+	}
+
+	select {
+	case result := <-resultCh:
+		switch result {
+		case "done":
+			log.Printf("Service %v successfully stopped", m.unitName)
 		default:
 			log.Printf("Unexpected result: %s", result)
 			return err
@@ -87,13 +100,6 @@ func (m *ServiceManager) start() error {
 }
 
 func main() {
-	// logFile, err := setupFileLogger()
-	// if err != nil {
-	// 	log.Fatal(err)
-	// 	os.Exit(1)
-	// }
-	// defer logFile.Close()
-
 	conn, err := dbus.NewWithContext(context.Background())
 	if err != nil {
 		log.Fatal(err)
@@ -102,8 +108,8 @@ func main() {
 
 	zapretName := "zapret.service"
 
-	_, err = CreateServiceManager(conn, zapretName)
-	if err != nil {
-		log.Printf("Zapret serviceManager failed, %v", err)
-	}
+	zapretManager := CreateServiceManager(conn, zapretName)
+
+	zapretManager.Start()
+
 }
